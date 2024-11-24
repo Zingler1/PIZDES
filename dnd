@@ -1,0 +1,117 @@
+import json
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+)
+
+# Функция для загрузки данных о классах
+def load_classes_data():
+    with open("classes_data.json", "r", encoding="utf-8") as file:
+        return json.load(file)
+
+# Загружаем данные о классах
+CLASSES_DATA = load_classes_data()
+
+# Генерация кнопок для выбора класса
+def get_class_buttons():
+    buttons = [[InlineKeyboardButton(class_name, callback_data=class_name)] for class_name in CLASSES_DATA]
+    return InlineKeyboardMarkup(buttons)
+
+# Генерация кнопок для разделов информации о классе
+def get_class_sections_buttons(class_name):
+    buttons = [
+        [InlineKeyboardButton("Навыки", callback_data=f"{class_name}_skills")],
+        [InlineKeyboardButton("Особенности", callback_data=f"{class_name}_features")],
+        [InlineKeyboardButton("Подклассы", callback_data=f"{class_name}_subclasses")],
+        [InlineKeyboardButton("Назад", callback_data="start")]
+    ]
+    return InlineKeyboardMarkup(buttons)
+
+# Генерация кнопок для подклассов
+def get_subclasses_buttons(class_name):
+    subclasses = CLASSES_DATA[class_name]["Подклассы"]
+    buttons = [[InlineKeyboardButton(subclass, callback_data=f"{class_name}_{subclass}")] for subclass in subclasses]
+    buttons.append([InlineKeyboardButton("Назад", callback_data=f"{class_name}_menu")])
+    return InlineKeyboardMarkup(buttons)
+
+# Обработчик команды /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Добро пожаловать в справочник по D&D!\n\nВыберите класс:",
+        reply_markup=get_class_buttons()
+    )
+
+# Обработчик нажатий на кнопки
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    callback_data = query.data
+
+    if callback_data == "start":
+        # Возвращаемся на выбор класса
+        await query.edit_message_text("Выберите класс:", reply_markup=get_class_buttons())
+
+    elif callback_data in CLASSES_DATA:
+        # Отображаем меню разделов выбранного класса
+        class_name = callback_data
+        await query.edit_message_text(
+            f"Вы выбрали: {class_name}\n\nВыберите раздел:",
+            reply_markup=get_class_sections_buttons(class_name)
+        )
+
+    elif "_menu" in callback_data:
+        # Возврат в меню класса
+        class_name = callback_data.split("_")[0]
+        await query.edit_message_text(
+            f"Вы выбрали: {class_name}\n\nВыберите раздел:",
+            reply_markup=get_class_sections_buttons(class_name)
+        )
+
+    elif "_skills" in callback_data:
+        # Отображаем навыки класса
+        class_name = callback_data.split("_")[0]
+        skills = "\n".join(f"- {skill}" for skill in CLASSES_DATA[class_name]["Навыки"])
+        await query.edit_message_text(
+            f"Навыки класса {class_name}:\n\n{skills}",
+            reply_markup=get_class_sections_buttons(class_name)
+        )
+
+    elif "_features" in callback_data:
+        # Отображаем особенности класса
+        class_name = callback_data.split("_")[0]
+        features = "\n".join(f"- {feature}" for feature in CLASSES_DATA[class_name]["Особенности"])
+        await query.edit_message_text(
+            f"Особенности класса {class_name}:\n\n{features}",
+            reply_markup=get_class_sections_buttons(class_name)
+        )
+
+    elif "_subclasses" in callback_data:
+        # Отображаем подклассы
+        class_name = callback_data.split("_")[0]
+        await query.edit_message_text(
+            f"Подклассы класса {class_name}:\n\nВыберите подкласс:",
+            reply_markup=get_subclasses_buttons(class_name)
+        )
+
+    elif "_" in callback_data:
+        # Отображаем информацию о подклассе
+        class_name, subclass_name = callback_data.split("_", 1)
+        subclass = CLASSES_DATA[class_name]["Подклассы"][subclass_name]
+        features = "\n".join(f"- {feature}" for feature in subclass["Особенности"])
+        await query.edit_message_text(
+            f"Подкласс: {subclass_name}\n\nОписание: {subclass['Описание']}\n\nОсобенности:\n{features}",
+            reply_markup=get_subclasses_buttons(class_name)
+        )
+
+# Основная настройка бота
+def main():
+    app = ApplicationBuilder().token("ВАШ_ТОКЕН").build()
+
+    # Обработчики команд и кнопок
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_handler))
+
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
